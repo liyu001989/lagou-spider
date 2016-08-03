@@ -44,8 +44,6 @@ var parseContent = function(content)
 
     }, function(err, result) {
         if (err) console.log(err);
-
-        console.log(pageNo + 'done');
     });
 }
 
