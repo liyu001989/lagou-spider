@@ -1,21 +1,67 @@
-module.exports = {
-    ips: [
-        'http://122.96.59.102:83',
-        'http://122.96.59.105:82',
-        'http://119.6.136.122:80',
-        'http://121.193.143.249:80',
-        'http://182.48.113.11:8088',
-        'http://118.180.15.152:8102',
-        'http://123.57.190.51:7777',
-        'http://183.54.102.37:8118',
-        'http://113.25.65.217:8118',
-        'http://122.96.59.106:80',
-        'http://39.84.78.39:8118',
-        'http://101.231.250.102:80',
-        'http://222.170.17.74:2226',
-        'http://218.244.149.184:8888',
-        'http://183.54.102.37:8118',
-        'http://39.84.78.39:8118',
-        'http://122.96.59.105:82',
-    ]
-};
+var superagent = require('superagent');
+var cheerio = require('cheerio');
+var async = require('async');
+var fs = require('fs');
+
+require('superagent-proxy')(superagent);
+
+var defaultUrl = 'http://www.xicidaili.com/nn/';
+
+var ips = [];
+async.map([1], function(pageNo, callback) {
+    var url = defaultUrl + pageNo;
+    superagent.get(url)
+        .end(function(err, sres) {
+            if (err) {
+                return callback(err);
+            }
+
+            try {
+                var $ = cheerio.load(sres.text);
+
+                $('tr').each(function(index, item) {
+                    // 过滤掉表头
+                    if (index == 0)  {
+                        return;
+                    }
+
+                    var ip = $(item).children('td').eq(1).text();
+                    var port = $(item).children('td').eq(2).text();
+
+                    ip = 'http://' + ip + ':' + port;
+
+                    ips.push(ip);
+                });
+
+                callback(null, ips);
+
+            } catch(err) {
+                callback(new Error('something wrong'));
+            }
+        });
+}, function (err, results) {
+    filterIps(ips);
+});
+
+var usableIps = [];
+// 得到所有可用的ip
+function filterIps(ips) {
+    async.mapLimit(ips, 100, function(ip, filterCallback) {
+        // 访问百度，超时30秒，返回200则为可用
+        superagent.get('http://www.baidu.com')
+            .proxy(ip)
+            .end(function(err, sres) {
+                if (err || sres.statusCode != 200) {
+                    return filterCallback(err);
+                }
+
+                console.log(ip);
+                usableIps.push(ip);
+                return filterCallback(null, ip);
+                done();
+
+            });
+    }, function (err, results) {
+        console.log(usableIps);
+    });
+}

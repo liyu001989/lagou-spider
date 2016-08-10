@@ -2,65 +2,38 @@
 
 var superagent = require('superagent'),
     cheerio = require('cheerio'),
-    mongoose = require('mongoose'),
-    urlencode = require('urlencode'),
-    async = require('async');
+    async = require('async')
+    config = require('./config');
 
 require('superagent-proxy')(superagent);
 // 拉钩会封ip，所以需要代理，
-var ips = require('./proxy').ips;
+var jobModel = require('./job');
 
-var config = require('./config');
 var jobListUrl = 'http://www.lagou.com/jobs/positionAjax.json';
-var jobUrl = 'http://www.lagou.com/jobs/%d.html';
-
-function getProxy()
-{
-    return ips[Math.floor(Math.random()*ips.length)];
-}
 
 var parseContent = function(content)
 {
     // 接口返回的所有jobs
     var jobs = content.content.positionResult.result;
 
-    // 5个并发去拿job详情
-    async.mapLimit(jobs, 5, function(item, callback) {
-
-        var jobItemUrl = jobUrl.replace('%d', item.positionId);
-        console.log(jobItemUrl);
-
-        superagent.get(jobItemUrl)
-            .proxy(getProxy())
-            .end(function(err, sres) {
-                if (err) {
-                    console.log(sres);
-                    return;
+        jobs.forEach(function(item) {
+            jobModel.where({positionId: item.positionId}).count(function(err, count) {
+                // 如果数据库里没有，则保存
+                if (!count) {
+                    job = new jobModel;
+                    job.name = item.positionName;
+                    job.companyName = item.companyShortName;
+                    job.companyFullName = item.companyFullName;
+                    job.createdAt = Date(item.formatCreateTime);
+                    job.companyId = item.companyId;
+                    job.positionId = item.positionId;
+                    job.salary = item.salary;
+                    job.companySize = item.companySize;
+                    job.city = item.city;
+                    job.save();
                 }
-
-                var content = sres.text;
-                var $ = cheerio.load(content);
-
-                jobDescription = $('.job_bt').text();
-
-                //console.log(jobDescription);
-                //正则去匹配工作描述
-                var re = new RegExp(config.filter,"gi");
-
-                if (re.test(jobDescription)) {
-                    console.log('====>');
-                    console.log(item.companyFullName);
-                    console.log(item.salary);
-                    console.log(jobItemUrl);
-                    console.log('<====');
-                }
-
-                setTimeout(callback, 15000);
             });
-
-    }, function(err, result) {
-        if (err) console.log(err);
-    });
+        });
 }
 
 var pageNo = 1;
@@ -74,6 +47,7 @@ async.whilst(
         // 运行到没有结果为止
         if (!nextPage) {
             console.log('DONE');
+            process.exit();
         }
 
         return nextPage;
@@ -82,8 +56,12 @@ async.whilst(
         superagent.get(jobListUrl)
             .query(params)
             .query({ pn: pageNo })
-            .proxy(getProxy())
+            //.proxy(getProxy())
+            .set('Connection', 'keep-alive')
             .end(function(err, sres) {
+                if (err) {
+                    return callback(err);
+                }
 
                 jsonResult = JSON.parse(sres.text);
 

@@ -11,7 +11,7 @@ var jobSchema = new mongoose.Schema({
     positionId:Number, // job id
     salary:String, // 工资
     companySize:String, //公司规模
-    desciprion:String,
+    description:String, // 职位描述
     city:String
 });
 
